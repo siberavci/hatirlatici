@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="tr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#14213d"><title>Hatırlatıcı</title>
+<style>
+:root{--bg:#f5f1e8;--ink:#14213d;--mut:#6b7280;--card:#fff;--ac:#e85d04;--ok:#2a9d8f;--ln:#ddd6c5}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1626;--ink:#eef0f6;--mut:#9aa3b5;--card:#1a2440;--ln:#2b3656}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,sans-serif;padding:env(safe-area-inset-top) 0 96px}
+header{display:flex;justify-content:space-between;align-items:center;padding:16px 18px}
+h1{font-size:22px;margin:0}h2{font-size:15px;margin:18px 18px 8px;color:var(--mut);font-weight:600}
+button,input,select,textarea{font:inherit;color:inherit}
+.ib{background:none;border:1px solid var(--ln);border-radius:10px;padding:6px 10px;margin-left:6px}
+.row{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding:4px 18px 10px;scrollbar-width:none}
+.card{flex:0 0 78%;max-width:320px;scroll-snap-align:start;background:var(--card);border:1px solid var(--ln);border-left:6px solid var(--ac);border-radius:14px;padding:14px;text-align:left}
+.card.done{border-left-color:var(--ok);opacity:.6}.card.late{border-left-color:#c1121f}
+.card b{display:block;font-size:17px}.card small{color:var(--mut)}.cd{font-weight:700;color:var(--ac);margin-top:6px}
+#fab{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));width:58px;height:58px;border-radius:50%;border:0;background:var(--ac);color:#fff;font-size:32px}
+dialog{width:92%;max-width:440px;border:0;border-radius:16px;background:var(--bg);color:var(--ink);padding:16px}
+dialog::backdrop{background:#0008}label{display:block;margin:10px 0 2px;font-size:13px;color:var(--mut)}
+input,select,textarea{width:100%;padding:9px;border:1px solid var(--ln);border-radius:10px;background:var(--card)}
+.chk{display:inline-flex;align-items:center;gap:4px;margin:4px 10px 0 0;color:var(--ink);font-size:14px}.chk input{width:auto}
+.btns{display:flex;gap:8px;margin-top:14px}.btns button{flex:1;padding:10px;border-radius:10px;border:1px solid var(--ln);background:var(--card)}
+.btns .pr{background:var(--ac);color:#fff;border-color:var(--ac)}.sub{display:block;width:100%;text-align:left;margin-top:6px;padding:8px;border:1px solid var(--ln);border-radius:10px;background:var(--card)}
+.empty{text-align:center;color:var(--mut);margin:60px 30px}
+.bar{padding:0 18px}.bar input{margin-bottom:6px}.chip{display:inline-block;margin:0 6px 6px 0;padding:3px 10px;border:1px solid var(--ln);border-radius:99px;background:var(--card);font-size:13px}.chip.on{background:var(--ink);color:var(--bg)}
+</style></head><body>
+<header><h1>📌 Hatırlatıcı</h1><div><button class="ib" id="dk"></button><button class="ib" id="ex">Yedekle</button><button class="ib" id="im">Yükle</button></div></header><div class="bar"><input id="q" type="search" placeholder="Ara: başlık, doktor, etiket…"><div id="tg"></div></div>
+<main id="main"></main><button id="fab" aria-label="Yeni kayıt">+</button>
+<dialog id="dlg"><div id="dc"></div></dialog>
+<script>
+const T={randevu:{i:'🩺',n:'Randevu',f:['Doktor','Hastane','Bölüm']},sinav:{i:'🎓',n:'Sınav',f:['Ders','Yer']},gorev:{i:'✅',n:'Görev',f:[]},not:{i:'📝',n:'Not',f:[]},diger:{i:'📌',n:'Diğer',f:[]}};
+const R=[[0,'Zamanında'],[60,'1 saat önce'],[1440,'1 gün önce'],[10080,'1 hafta önce']];
+let FT='';let D=JSON.parse(localStorage.getItem('d')||'{"n":0,"r":[]}');
+const $=s=>document.querySelector(s),LN=()=>window.Capacitor?.Plugins?.LocalNotifications;
+const save=()=>{localStorage.setItem('d',JSON.stringify(D));render();sync()};
+const sod=d=>{d=new Date(d);d.setHours(0,0,0,0);return d};
+const dd=r=>Math.round((sod(r.when)-sod(new Date()))/864e5);
+const fmt=w=>new Date(w).toLocaleString('tr-TR',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
+const cd=r=>{const n=dd(r);return n==0?'Bugün':n==1?'Yarın':n>1?n+' gün kaldı':-n+' gün geçti'};
+const kids=id=>D.r.filter(x=>x.parent==id);
+function renderTags(a){$('#tg').innerHTML=a.map(t=>`<button class="chip ${t==FT?'on':''}" onclick="FT=FT==='${t}'?'':'${t}';render()">#${esc(t)}</button>`).join('')}
+function render(){
+ const q=($('#q')?.value||'').toLowerCase();renderTags([...new Set(D.r.flatMap(r=>r.tags||[]))]);const top=D.r.filter(r=>!r.parent&&(!FT||(r.tags||[]).includes(FT))&&(!q||JSON.stringify([r.title,r.note,r.fields,r.tags]).toLowerCase().includes(q))).sort((a,b)=>new Date(a.when)-new Date(b.when));
+ const G=[['Geçmiş',r=>!r.done&&dd(r)<0],['Bugün',r=>!r.done&&dd(r)==0],['Yarın',r=>!r.done&&dd(r)==1],['Bu hafta',r=>!r.done&&dd(r)>1&&dd(r)<=7],['Daha sonra',r=>!r.done&&dd(r)>7],['Tamamlananlar',r=>r.done]];
+ let h='';for(const[t,f]of G){const l=top.filter(f);if(!l.length)continue;
+  h+=`<h2>${t} (${l.length})</h2><div class="row">`+l.map(r=>{const k=kids(r.id);
+  return `<button class="card ${r.done?'done':dd(r)<0?'late':''}" onclick="openR(${r.id})"><b>${T[r.type].i} ${esc(r.title)}</b><small>${fmt(r.when)}${r.rep?' 🔁':''}</small><div class="cd">${cd(r)}</div>${(r.tags||[]).length?`<small>${r.tags.map(t=>'#'+esc(t)).join(' ')}</small><br>`:''}${k.length?`<small>${k.filter(x=>x.done).length}/${k.length} alt kayıt</small>`:''}</button>`}).join('')+'</div>'}
+ $('#main').innerHTML=h||'<p class="empty">Henüz kayıt yok. Sağ alttaki + ile ilk hatırlatmanı ekle.</p>'}
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function fields(type,v={}){return T[type].f.map(f=>`<label>${f}</label><input data-f="${f}" value="${esc(v[f])}">`).join('')}
+function openR(id,parent){
+ const r=id?D.r.find(x=>x.id==id):{type:'randevu',title:'',when:parent?D.r.find(x=>x.id==parent).when:'',fields:{},note:'',rem:[1440,0],tags:[],rep:'',parent:parent||null};
+ const ks=id?kids(id):[];
+ $('#dc').innerHTML=`<label>Tür</label><select id="ty">${Object.entries(T).map(([k,v])=>`<option value="${k}" ${k==r.type?'selected':''}>${v.i} ${v.n}</option>`).join('')}</select>
+ <label>Başlık</label><input id="ti" value="${esc(r.title)}"><label>Tarih ve saat</label><input id="wh" type="datetime-local" value="${r.when}">
+ <div id="ff">${fields(r.type,r.fields)}</div><label>Not</label><textarea id="no" rows="2">${esc(r.note)}</textarea>
+ <label>Etiketler (virgülle)</label><input id="tgs" value="${esc((r.tags||[]).join(', '))}"><label>Tekrar</label><select id="rp">${[['','Yok'],['d','Her gün'],['w','Her hafta'],['m','Her ay'],['y','Her yıl']].map(([k,t])=>`<option value="${k}" ${k==(r.rep||'')?'selected':''}>${t}</option>`).join('')}</select><label>Hatırlat</label>${R.map(([m,t])=>`<label class="chk"><input type="checkbox" value="${m}" ${r.rem.includes(m)?'checked':''}>${t}</label>`).join('')}
+ ${id&&!r.parent?`<label>Alt kayıtlar (tahlil, röntgen…)</label>${ks.map(k=>`<button class="sub" onclick="openR(${k.id})">${k.done?'✔':'○'} ${esc(k.title)} <small>${fmt(k.when)}</small></button>`).join('')}<button class="sub" onclick="openR(null,${id})">+ Alt kayıt ekle</button>`:''}
+ <div class="btns"><button onclick="dlg.close()">Kapat</button>${id?`<button onclick="tg(${id})">${r.done?'Geri al':r.rep?'Tamamla → sonraki':'Tamamla'}</button><button onclick="del(${id})">Sil</button>`:''}<button class="pr" onclick="sv(${id||0},${r.parent||0})">Kaydet</button></div>`;
+ $('#ty').onchange=e=>$('#ff').innerHTML=fields(e.target.value);dlg.showModal()}
+function sv(id,parent){
+ const title=$('#ti').value.trim(),when=$('#wh').value;if(!title||!when)return alert('Başlık ve tarih gerekli.');
+ const f={};document.querySelectorAll('[data-f]').forEach(i=>f[i.dataset.f]=i.value);
+ const o={type:$('#ty').value,title,when,fields:f,note:$('#no').value,rem:[...document.querySelectorAll('.chk input:checked')].map(i=>+i.value),tags:$('#tgs').value.split(',').map(t=>t.trim().replace(/[^\p{L}\p{N}_-]/gu,'')).filter(Boolean),rep:$('#rp').value,parent:parent||null};
+ if(id)Object.assign(D.r.find(x=>x.id==id),o);else D.r.push({...o,id:Date.now(),n:++D.n,done:false});
+ dlg.close();save()}
+function nxt(w,k){const d=new Date(w);if(k=='d')d.setDate(d.getDate()+1);if(k=='w')d.setDate(d.getDate()+7);if(k=='m')d.setMonth(d.getMonth()+1);if(k=='y')d.setFullYear(d.getFullYear()+1);return d}
+const loc=d=>new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,16);
+function tg(id){const r=D.r.find(x=>x.id==id);if(r.rep&&!r.done){let d=new Date(r.when);do d=nxt(d,r.rep);while(d<new Date());r.when=loc(d);kids(id).forEach(k=>k.done=false)}else r.done=!r.done;dlg.close();save()}
+function del(id){if(!confirm('Silinsin mi? Alt kayıtlar da silinir.'))return;D.r=D.r.filter(x=>x.id!=id&&x.parent!=id);dlg.close();save()}
+async function sync(){const L=LN();if(!L)return;try{
+ const p=await L.getPending();if(p.notifications.length)await L.cancel({notifications:p.notifications});
+ const now=Date.now(),list=[];
+ D.r.filter(r=>!r.done).forEach(r=>r.rem.forEach((m,i)=>{const at=new Date(new Date(r.when)-m*6e4);if(at>now)list.push({id:100+r.n*10+i,title:T[r.type].i+' '+r.title,body:(m?R.find(x=>x[0]==m)[1]:'Şimdi')+' · '+fmt(r.when),schedule:{at,allowWhileIdle:true},channelId:'hat'})}));
+ const nx=D.r.filter(r=>!r.done&&new Date(r.when)>now).sort((a,b)=>new Date(a.when)-new Date(b.when))[0];
+ if(nx&&D.dock!==false)list.push({id:1,title:'Sıradaki: '+nx.title,body:fmt(nx.when)+' · '+cd(nx),ongoing:true,autoCancel:false,channelId:'hat'});
+ else await L.removeDeliveredNotifications({notifications:[{id:1}]});
+ if(list.length)await L.schedule({notifications:list})}catch(e){console.log(e)}}
+async function init(){const L=LN();if(L){try{await L.requestPermissions();await L.createChannel({id:'hat',name:'Hatırlatıcılar',importance:5,vibration:true});
+ const s=await L.checkExactNotificationSetting();if(s.exact_alarm!=='granted')await L.changeExactNotificationSetting()}catch(e){}}sync()}
+$('#fab').onclick=()=>openR();
+$('#ex').onclick=async()=>{const j=JSON.stringify(D);try{await navigator.clipboard.writeText(j);alert('Yedek panoya kopyalandı. Bir yere yapıştırıp sakla.')}catch{prompt('Kopyala:',j)}};
+$('#im').onclick=()=>{const j=prompt('Yedeği yapıştır:');if(!j)return;try{D=JSON.parse(j);save()}catch{alert('Geçersiz yedek.')}};
+const dk=()=>$('#dk').textContent='Dock: '+(D.dock===false?'Kapalı':'Açık');dk();$('#dk').onclick=()=>{D.dock=D.dock===false;dk();save()};$('#q').oninput=render;
+render();init();setInterval(render,6e4);
+</script></body></html>
